@@ -1,3 +1,11 @@
+-- CUSTOM FLUXPRO
+local function is_spromoted(chat_id, user_id)
+  local hash =  'sprom:'..chat_id..':'..user_id
+  local spromoted = redis:get(hash)
+  return spromoted or false
+end
+-- END
+
 local function is_user_whitelisted(id)
   local hash = 'whitelist:user#id'..id
   local white = redis:get(hash) or false
@@ -135,11 +143,46 @@ local function username_id(cb_extra, success, result)
       	member_username = member
       	member_id = v.id
       	if get_cmd == 'kick' then
+      	    if member_id == our_id then
+      	        send_large_msg(receiver, 'Are you kidding?')
+      	        return nil
+      	    end
+      	    -- CUSTOM FLUX 'kick' START FROM HERE
+            local data = load_data(_config.moderation.data) -- FLUX MOD
+            if data[tostring('admins')] then
+              if data[tostring('admins')][tostring(member_id)] then
+                send_large_msg(receiver, 'You can\'t kick admin!')
+                return nil
+              end
+            end
+            if is_spromoted(chat_id, member_id) then
+            	return send_large_msg(receiver,'You can\'t kick leader')
+            end
+            -- CUSTOM FLUX 'kick' ends
       	    return kick_user(member_id, chat_id)
       	elseif get_cmd == 'ban user' then
+      	    if member_id == our_id then
+      	        send_large_msg(receiver, 'Are you kidding?')
+      	        return nil
+      	    end
+      	    -- CUSTOM FLUX 'ban' START FROM HERE
+            local data = load_data(_config.moderation.data) -- FLUX MOD
+            if data[tostring('admins')] then
+              if data[tostring('admins')][tostring(member_id)] then
+                send_large_msg(receiver, 'You can\'t ban admin!')
+                return nil
+              end
+            end
+            if is_spromoted(chat_id, member_id) then
+            	return send_large_msg(receiver, 'You can\'t ban leader')
+            end
+            -- CUSTOM FLUX 'ban' ends 
       	    send_large_msg(receiver, 'User @'..member..' ['..member_id..'] banned')
       	    return ban_user(member_id, chat_id)
-      	elseif get_cmd == 'superban user' then
+      	elseif get_cmd == 'kickallgp user' then
+      	    if member_id == our_id then
+      	        return nil
+      	    end
       	    send_large_msg(receiver, 'User @'..member..' ['..member_id..'] globally banned!')
       	    return superban_user(member_id, chat_id)
       	elseif get_cmd == 'whitelist user' then
@@ -178,6 +221,20 @@ local function run(msg, matches)
     if msg.to.type == 'chat' then
       if matches[2] == 'user' then
         if string.match(matches[3], '^%d+$') then
+            if matches[2] == our_id then
+                return 'Are you kidding?'
+            end
+            -- CUSTOM FLUX 'ban' START FROM HERE
+            local data = load_data(_config.moderation.data) -- FLUX MOD
+            if data[tostring('admins')] then
+              if data[tostring('admins')][tostring(member_id)] then
+                return 'You can\'t ban admin!'
+              end
+            end
+            if is_spromoted(msg.to.id, matches[3]) and not is_admin(msg) then
+            	return 'You can\'t ban leader'
+            end
+            -- CUSTOM FLUX 'ban' ends 
             ban_user(user_id, chat_id)
             send_large_msg(receiver, 'User '..user_id..' banned!')
         else
@@ -195,11 +252,14 @@ local function run(msg, matches)
     end
   end
 
-  if matches[1] == 'superban' and is_admin(msg) then
+  if matches[1] == 'kickallgp' and is_admin(msg) then
     local user_id = matches[3]
     local chat_id = msg.to.id
     if matches[2] == 'user' then
         if string.match(matches[3], '^%d+$') then
+            if matches[2] == our_id then
+                return 'Are you kidding?'
+            end
             superban_user(user_id, chat_id)
             send_large_msg(receiver, 'User '..user_id..' globally banned!')
         else
@@ -217,6 +277,20 @@ local function run(msg, matches)
   if matches[1] == 'kick' then
     if msg.to.type == 'chat' then
       if string.match(matches[2], '^%d+$') then
+          if matches[2] == our_id and not is_admin(msg) then
+              return 'Are you kidding?'
+          end
+          -- CUSTOM FLUX 'kick' START FROM HERE
+          local data = load_data(_config.moderation.data) -- FLUX MOD
+          if data[tostring('admins')] then
+          	if data[tostring('admins')][tostring(matches[2])] then
+          		return 'You can\'t ban admin!'
+          	end
+          end
+		  if is_spromoted(msg.to.id, matches[2]) and not is_admin(msg) then
+		  	return 'You can\'t kick leader'
+		  end
+           -- CUSTOM FLUX 'kick' ends 
           kick_user(matches[2], msg.to.id)
       else
           local member = string.gsub(matches[2], '@', '')
@@ -301,9 +375,9 @@ return {
           "!kick <username> : Kick user from chat group by username",
           },
       admin = {
-          "!superban user <user_id> : Kick user from all chat and kicks it if joins again",
-          "!superban user <username> : Kick user from all chat and kicks it if joins again",
-          "!superban delete <user_id> : Unban user",
+          "!kickallgp user <user_id> : Kick user from all chat and kicks it if joins again",
+          "!kickallgp user <username> : Kick user from all chat and kicks it if joins again",
+          "!kickallgp delete <user_id> : Unban user",
           },
       },
   patterns = {
@@ -315,8 +389,8 @@ return {
     "^!(whitelist) (delete) (chat)$",
     "^!(ban) (user) (.*)$",
     "^!(ban) (delete) (.*)$",
-    "^!(superban) (user) (.*)$",
-    "^!(superban) (delete) (.*)$",
+    "^!(kickallgp) (user) (.*)$",
+    "^!(kickallgp) (delete) (.*)$",
     "^!(kick) (.*)$",
     "^!(kickme)$",
     "^!!tgservice (.+)$",
